@@ -135,6 +135,8 @@ ln -s $WDIR/dump.xml $dumpdir/${LANGUAGE}wiki-${dumpdate}-dump.xml
 
 cat << EOF > dbpedia.properties
 base-dir=$WDIR
+wiki=$LANGUAGE
+locale=$LANGUAGE
 source=dump.xml
 require-download-complete=false
 languages=$LANGUAGE
