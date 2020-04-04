@@ -108,57 +108,89 @@ fi
 # DBpedia extraction:
 ########################################################################################################
 
-#Download:
-echo "Creating DBpedia nt files..."
+######     #    #######    #    ######  #     #  #####
+#     #   # #      #      # #   #     # #     # #     #
+#     #  #   #     #     #   #  #     # #     # #
+#     # #     #    #    #     # ######  #     #  #####
+#     # #######    #    ####### #     # #     #       #
+#     # #     #    #    #     # #     # #     # #     #
+######  #     #    #    #     # ######   #####   #####
+
+echo " Downloading the latest version of the following artifacts: 
+* https://databus.dbpedia.org/dbpedia/generic/disambiguations
+* https://databus.dbpedia.org/dbpedia/generic/redirects
+* https://databus.dbpedia.org/dbpedia/mappings/instance-types
+
+Note of deviation from original index_db.sh: 
+takes the direct AND transitive version of redirects and instance-types and the redirected version of disambiguation 
+"
 cd $BASE_WDIR
 
-if [ -d extraction-framework ]; then
-    echo "Updating DBpedia Spotlight..."
-    cd extraction-framework
-    git reset --hard HEAD
-    git pull
-    mvn install
-else
-    echo "Setting up DEF..."
-    git clone git://github.com/dbpedia/extraction-framework.git
-    cd extraction-framework
-    mvn install
-fi
+QUERY="PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX dc: <http://purl.org/dc/elements/1.1/>
+PREFIX dataid: <http://dataid.dbpedia.org/ns/core#>
+PREFIX dataid-cv: <http://dataid.dbpedia.org/ns/cv#>
+PREFIX dct: <http://purl.org/dc/terms/>
+PREFIX dcat: <http://www.w3.org/ns/dcat#>
 
-cd dump
+SELECT  ?file WHERE {
+    { 
+    # Subselect latestVersion by artifact
+    SELECT  ?artifact (max(?version) as ?latestVersion)  WHERE {
+            ?dataset dataid:artifact ?artifact .
+            ?dataset dct:hasVersion ?version
+            FILTER (?artifact in (
+		        # GENERIC 
+                <https://databus.dbpedia.org/dbpedia/generic/disambiguations> ,
+                <https://databus.dbpedia.org/dbpedia/generic/redirects> ,
+                # MAPPINGS
+          	    <https://databus.dbpedia.org/dbpedia/mappings/instance-types>
+             	# latest ontology, currently @denis account
+          		# TODO not sure if needed for Spotlight
+                # <https://databus.dbpedia.org/denis/ontology/dbo-snapshots>
+             )) .
+             }GROUP BY ?artifact 
+	} 
+  		
+    ?dataset dct:hasVersion ?latestVersion .
+    {
+          ?dataset dataid:artifact ?artifact .
+          ?dataset dcat:distribution ?distribution .
+          ?distribution dcat:downloadURL ?file .
+          ?distribution dataid:contentVariant '$LANGUAGE'^^xsd:string .
+          # remove debug info	
+          MINUS {
+               ?distribution dataid:contentVariant ?variants . 
+               FILTER (?variants in ('disjointDomain'^^xsd:string, 'disjointRange'^^xsd:string))
+          }  		
+    }   
+} ORDER by ?artifact
+"
 
-dumpdate=$(date +%Y%m%d)
-dumpdir=$WDIR/${LANGUAGE}wiki/${dumpdate}
+# execute query and trim " and first line from result set
+RESULT=`curl --data-urlencode query="$QUERY" --data-urlencode format="text/tab-separated-values" https://databus.dbpedia.org/repo/sparql | sed 's/"//g' | grep -v "^file$" `
 
-mkdir -p $dumpdir
-ln -s $WDIR/dump.xml $dumpdir/${LANGUAGE}wiki-${dumpdate}-dump.xml
+# Download
+TMPDOWN="dump-tmp-download"
+mkdir $TMPDOWN 
+cd $TMPDOWN
+for i in $RESULT
+	do  
+			wget $i 
+			ls
+			echo $TMPDOWN
+			pwd
+	done
 
-cat << EOF > dbpedia.properties
-base-dir=$WDIR
-wiki=$LANGUAGE
-locale=$LANGUAGE
-source=dump.xml
-require-download-complete=false
-languages=$LANGUAGE
-ontology=../ontology.xml
-mappings=../mappings
-uri-policy.uri=uri:en; generic:en; xml-safe-predicates:*
-format.nt.gz=n-triples;uri-policy.uri
-EOF
+cd ..
 
-if [[ ",ga,ar,be,bg,bn,ced,cs,cy,da,eo,et,fa,fi,gl,hi,hr,hu,id,ja,lt,lv,mk,mt,sk,sl,sr,tr,ur,vi,war,zh," == *",$LANGUAGE,"* ]]; then #Languages with no disambiguation definitions
-     echo "extractors=.RedirectExtractor,.MappingExtractor" >> dbpedia.properties
-else
-     echo "extractors=.RedirectExtractor,.DisambiguationExtractor,.MappingExtractor" >> dbpedia.properties
-fi
+echo "decompressing"
+bzcat -v $TMPDOWN/instance-types*.ttl.bz2 > $WDIR/instance_types.nt
+bzcat -v $TMPDOWN/disambiguations*.ttl.bz2 > $WDIR/disambiguations.nt
+bzcat -v $TMPDOWN/redirects*.ttl.bz2 > $WDIR/redirects.nt
 
-../run extraction dbpedia.properties
-
-zcat $dumpdir/${LANGUAGE}wiki-${dumpdate}-instance-types*.nt.gz > $WDIR/instance_types.nt
-zcat $dumpdir/${LANGUAGE}wiki-${dumpdate}-disambiguations-unredirected.nt.gz > $WDIR/disambiguations.nt
-zcat $dumpdir/${LANGUAGE}wiki-${dumpdate}-redirects.nt.gz > $WDIR/redirects.nt
-
-rm -Rf $dumpdir
+# clean
+rm -r $TMPDOWN
 
 ########################################################################################################
 # Setting up Spotlight:
@@ -177,7 +209,6 @@ else
     git clone --depth 1 https://github.com/dbpedia-spotlight/dbpedia-spotlight-model
     mv dbpedia-spotlight-model dbpedia-spotlight
     cd dbpedia-spotlight
-    mvn -T 1C -q clean install
 fi
 
 
