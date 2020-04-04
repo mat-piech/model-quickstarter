@@ -203,10 +203,10 @@ if [ -d dbpedia-spotlight ]; then
     cd dbpedia-spotlight
     git reset --hard HEAD
     git pull
-    mvn -T 1C -q clean install
+    mvn install
 else
     echo "Setting up DBpedia Spotlight..."
-    git clone --depth 1 https://github.com/dbpedia-spotlight/dbpedia-spotlight-model
+    git clone --depth 1 https://github.com/mat-piech/dbpedia-spotlight-model.git
     mv dbpedia-spotlight-model dbpedia-spotlight
     cd dbpedia-spotlight
 fi
@@ -218,7 +218,7 @@ fi
 
 cd $BASE_WDIR
 rm -Rf wikistatsextractor
-git clone --depth 1 https://github.com/dbpedia-spotlight/wikistatsextractor
+git clone --depth 1 https://github.com/mat-piech/wikistatsextractor
 
 # Stop processing if one step fails
 set -e

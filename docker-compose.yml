@@ -1,0 +1,9 @@
+version: '3.5'
+services:
+  spotlight:
+    build: 
+      context: ./docker
+    volumes:
+       - ./wdir:/model-quickstarter/wdir 
+       - ./data:/model-quickstarter/data 
+       - ./models:/model-quickstarter/models
